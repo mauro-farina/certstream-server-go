@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"strings"
 	"time"
+	"encoding/asn1"
 
 	"github.com/d-Rickyy-b/certstream-server-go/internal/models"
 
@@ -191,7 +192,63 @@ func leafCertFromX509cert(cert x509.Certificate) models.LeafCert {
 		}
 	}
 
+	// Handle ExtendedKeyUsage (human-readable)
+	// Convert []ctasn1.ObjectIdentifier to []encoding/asn1.ObjectIdentifier
+	// Need to import "encoding/asn1" at the top if not already
+	var stdUnknownEKU []asn1.ObjectIdentifier
+	for _, oid := range cert.UnknownExtKeyUsage {
+		stdUnknownEKU = append(stdUnknownEKU, asn1.ObjectIdentifier(oid))
+	}
+	extKeyUsages := extendedKeyUsageToString(cert.ExtKeyUsage, stdUnknownEKU)
+	if extKeyUsages != "" {
+		leafCert.Extensions.ExtendedKeyUsage = &extKeyUsages
+	}
+
 	return leafCert
+}
+
+// extendedKeyUsageToString converts ExtKeyUsage and UnknownExtKeyUsage slices to a human-readable string.
+func extendedKeyUsageToString(usages []x509.ExtKeyUsage, unknownUsages []asn1.ObjectIdentifier) string {
+	var ekuNames []string
+	for _, usage := range usages {
+		switch usage {
+		case x509.ExtKeyUsageAny:
+			ekuNames = append(ekuNames, "Any")
+		case x509.ExtKeyUsageServerAuth:
+			ekuNames = append(ekuNames, "Server Authentication")
+		case x509.ExtKeyUsageClientAuth:
+			ekuNames = append(ekuNames, "Client Authentication")
+		case x509.ExtKeyUsageCodeSigning:
+			ekuNames = append(ekuNames, "Code Signing")
+		case x509.ExtKeyUsageEmailProtection:
+			ekuNames = append(ekuNames, "Email Protection")
+		case x509.ExtKeyUsageIPSECEndSystem:
+			ekuNames = append(ekuNames, "IPSEC End System")
+		case x509.ExtKeyUsageIPSECTunnel:
+			ekuNames = append(ekuNames, "IPSEC Tunnel")
+		case x509.ExtKeyUsageIPSECUser:
+			ekuNames = append(ekuNames, "IPSEC User")
+		case x509.ExtKeyUsageTimeStamping:
+			ekuNames = append(ekuNames, "Time Stamping")
+		case x509.ExtKeyUsageOCSPSigning:
+			ekuNames = append(ekuNames, "OCSP Signing")
+		case x509.ExtKeyUsageMicrosoftServerGatedCrypto:
+			ekuNames = append(ekuNames, "Microsoft Server Gated Crypto")
+		case x509.ExtKeyUsageNetscapeServerGatedCrypto:
+			ekuNames = append(ekuNames, "Netscape Server Gated Crypto")
+		case x509.ExtKeyUsageMicrosoftCommercialCodeSigning:
+			ekuNames = append(ekuNames, "Microsoft Commercial Code Signing")
+		case x509.ExtKeyUsageMicrosoftKernelCodeSigning:
+			ekuNames = append(ekuNames, "Microsoft Kernel Code Signing")
+		default:
+			ekuNames = append(ekuNames, "Unknown")
+		}
+	}
+	// Add unknown usages as OID strings
+	for _, oid := range unknownUsages {
+		ekuNames = append(ekuNames, oid.String())
+	}
+	return strings.Join(ekuNames, ", ")
 }
 
 // buildSubject generates a Subject struct from the given pkix.Name.
